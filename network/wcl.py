@@ -1,6 +1,10 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+import sys
+
 import torch
 import torch.nn as nn
+
+sys.path.append('/home/saemeechoi/cls_noise/with_WCL/')
 from network.head import *
 from network.resnet import *
 import torch.nn.functional as F
@@ -11,7 +15,7 @@ import numpy as np
 class WCL(nn.Module):
     def __init__(self, dim_hidden=4096, dim=256):
         super(WCL, self).__init__()
-        self.net = resnet50()
+        self.net = resnet50(pretrained=True)
         self.head1 = ProjectionHead(dim_in=2048, dim_out=dim, dim_hidden=dim_hidden)
         self.head2 = ProjectionHead(dim_in=2048, dim_out=dim, dim_hidden=dim_hidden)
 
@@ -42,7 +46,7 @@ class WCL(nn.Module):
         loss = (-mean_log_prob_pos).mean()
         return loss
 
-    def forward(self, x1, x2, t=0.1):
+    def forward(self, x1, x2, rank, t=0.1):
         world_size = torch.distributed.get_world_size()
         rank = torch.distributed.get_rank()
 
@@ -55,8 +59,11 @@ class WCL(nn.Module):
         other1 = concat_other_gather(feat1)
         other2 = concat_other_gather(feat2)
 
-        prob = torch.cat([feat1, feat2]) @ torch.cat([feat1, feat2, other1, other2]).T / t
-        diagnal_mask = (1 - torch.eye(prob.size(0), prob.size(1), device='cuda')).bool()
+        try:
+            prob = torch.cat([feat1, feat2]) @ torch.cat([feat1, feat2, other1, other2]).T / t
+        except:
+            prob = torch.cat([feat1, feat2]) @ torch.cat([feat1, feat2]).T / t
+        diagnal_mask = (1 - torch.eye(prob.size(0), prob.size(1)).to(rank)).bool()
         logits = torch.masked_select(prob, diagnal_mask).reshape(prob.size(0), -1)
 
         first_half_label = torch.arange(b-1, 2*b-1).long().cuda()
@@ -101,10 +108,14 @@ def concat_other_gather(tensor):
     *** Warning ***: torch.distributed.all_gather has no gradient.
     """
     rank = torch.distributed.get_rank()
-    tensors_gather = [torch.ones_like(tensor)
-        for _ in range(torch.distributed.get_world_size())]
-    torch.distributed.all_gather(tensors_gather, tensor)
-    other = torch.cat(tensors_gather[:rank] + tensors_gather[rank+1:], dim=0)
+    tensors_gather = torch.stack([torch.ones_like(tensor)
+        for _ in range(torch.distributed.get_world_size())])
+    torch.distributed.all_gather_into_tensor(tensors_gather, tensor)
+    try:
+        other = torch.cat(tensors_gather[:rank] + tensors_gather[rank+1:], dim=0)
+    except:
+        other = tensors_gather[:rank]
+        
     return other
 
 

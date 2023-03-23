@@ -1,8 +1,7 @@
 import random
-import torchvision.transforms as transforms
-
 from PIL import ImageFilter, Image, ImageOps
 
+import torchvision.transforms as transforms
 
 
 class GaussianBlur(object):
@@ -16,6 +15,29 @@ class GaussianBlur(object):
         x = x.filter(ImageFilter.GaussianBlur(radius=sigma))
         return x
 
+
+cifar10_train_weak_aug = transforms.Compose([
+        transforms.RandomResizedCrop(32, scale=(0.2, 1.)),
+        transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
+        transforms.RandomGrayscale(p=0.2),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2023, 0.1994, 0.2010))
+    ])
+
+cifar10_train_strong_aug = transforms.Compose([
+        transforms.RandomResizedCrop(32, scale=(0.2, 1.)),
+        transforms.RandomApply([transforms.ColorJitter(0.8, 0.8, 0.8, 0.2)], p=0.8),
+        transforms.RandomGrayscale(p=0.2),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2023, 0.1994, 0.2010))
+    ])
+
+cifar10_eval_aug = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2023, 0.1994, 0.2010))
+    ])
 
 
 moco_aug = transforms.Compose([

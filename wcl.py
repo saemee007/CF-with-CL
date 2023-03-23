@@ -1,49 +1,51 @@
-import torch
-from util.torch_dist_sum import *
-from data.imagenet import *
-from data.augmentation import *
-import torch.nn as nn
-from util.meter import *
-from network.wcl import WCL
-import time
-from util.accuracy import accuracy
-from math import sqrt
+import os
 import math
+import time
+from math import sqrt
+import numpy as np
+
+import torch
+import torch.nn as nn
+import torch.multiprocessing as mp
+
+
+from data import get_dataset
+from data.augmentation import *
+
+from util.meter import *
+from util.torch_dist_sum import *
+from util.accuracy import accuracy
 from util.LARS import LARS
-import argparse
+from util.parsing import set_seed
+from util import parsing
+from tqdm import tqdm
 
+from network.wcl import WCL
+from torch.distributed import init_process_group, destroy_process_group
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--batch-size-pergpu', type=int, default=128)
-parser.add_argument('--epochs', type=int, default=100)
-args = parser.parse_args()
-print(args)
-
-epochs = args.epochs
-warm_up = 10
-
-def adjust_learning_rate(optimizer, epoch, base_lr, i, iteration_per_epoch):
+def adjust_learning_rate(args, optimizer, epoch, i, iteration_per_epoch):
     T = epoch * iteration_per_epoch + i
-    warmup_iters = warm_up * iteration_per_epoch
-    total_iters = (epochs - warm_up) * iteration_per_epoch
+    warmup_iters = args.warmup_epochs * iteration_per_epoch
+    total_iters = (args.epochs - args.warmup_epochs) * iteration_per_epoch
 
-    if epoch < warm_up:
-        lr = base_lr * 1.0 * T / warmup_iters
+    if epoch < args.warmup_epochs:
+        lr = args.base_lr * 1.0 * T / warmup_iters
     else:
         T = T - warmup_iters
-        lr = 0.5 * base_lr * (1 + math.cos(1.0 * T / total_iters * math.pi))
+        lr = 0.5 * args.base_lr * (1 + math.cos(1.0 * T / total_iters * math.pi))
     
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
 
-def train(train_loader, model, local_rank, rank, criterion, optimizer, epoch, iteration_per_epoch, base_lr):
+def train(args, train_loader, model, rank, criterion, optimizer, epoch, iteration_per_epoch, base_lr):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
     graph_losses = AverageMeter('graph', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
     top5 = AverageMeter('Acc@5', ':6.2f')
+    
     progress = ProgressMeter(
         len(train_loader),
         [batch_time, data_time, losses, graph_losses, top1, top5],
@@ -54,15 +56,15 @@ def train(train_loader, model, local_rank, rank, criterion, optimizer, epoch, it
 
     end = time.time()
     for i, (img1, img2) in enumerate(train_loader):
-        adjust_learning_rate(optimizer, epoch, base_lr, i, iteration_per_epoch)
+        adjust_learning_rate(args, optimizer, epoch, i, iteration_per_epoch)
         data_time.update(time.time() - end)
 
-        if local_rank is not None:
-            img1 = img1.cuda(local_rank, non_blocking=True)
-            img2 = img2.cuda(local_rank, non_blocking=True)
+        if rank is not None:
+            img1 = img1.to(rank, non_blocking=True)
+            img2 = img2.to(rank, non_blocking=True)
 
         # compute output
-        output, target, graph_loss = model(img1, img2)
+        output, target, graph_loss = model(img1, img2, rank)
         ce_loss = criterion(output, target)
         loss = ce_loss + graph_loss
 
@@ -87,18 +89,26 @@ def train(train_loader, model, local_rank, rank, criterion, optimizer, epoch, it
             progress.display(i)
 
 
-def main():
+def main(rank, args):
     from torch.nn.parallel import DistributedDataParallel
     from util.dist_init import dist_init
     
-    rank, local_rank, world_size = dist_init()
-    batch_size = args.batch_size_pergpu
-    num_workers = 8
-    base_lr = 0.075 * sqrt(batch_size * world_size)
+    # set_seed()
+    dist_init(rank, args)    
+    
+    batch_size = args.batch_size
+    args.num_workers = int(args.ngpus) * 4
 
-    model = WCL()
+    if 'imagenet' in args.dataset:
+        args.base_lr = 0.075 * sqrt(args.batch_size * int(args.ngpus))
+    elif 'cifar' in args.dataset:
+        args.base_lr = 0.25 * args.batch_size / 256
+    else:
+        raise NotImplementedError("Dataset {} does not exist.".format(args.dataset))
+
+
+    model = WCL().to(rank)
     model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
-    model = model.cuda()
     
     param_dict = {}
     for k, v in model.named_parameters():
@@ -109,33 +119,33 @@ def main():
 
     optimizer = torch.optim.SGD([{'params': bn_params, 'weight_decay': 0, 'ignore': True },
                                 {'params': rest_params, 'weight_decay': 1e-6, 'ignore': False}], 
-                                lr=base_lr, momentum=0.9, weight_decay=1e-6)
+                                lr=args.base_lr, momentum=0.9, weight_decay=1e-6)
 
     optimizer = LARS(optimizer, eps=0.0)
-    model = DistributedDataParallel(model, device_ids=[local_rank], find_unused_parameters=True)
+    model = DistributedDataParallel(model, device_ids=[rank], find_unused_parameters=True)
 
-    torch.backends.cudnn.benchmark = True
-
-    weak_aug_train_dataset = ImagenetContrastive(aug=moco_aug, max_class=1000)
+    weak_aug_train_dataset = get_dataset(args, aug=cifar10_train_weak_aug)
     weak_aug_train_sampler = torch.utils.data.distributed.DistributedSampler(weak_aug_train_dataset)
     weak_aug_train_loader = torch.utils.data.DataLoader(
         weak_aug_train_dataset, batch_size=batch_size, shuffle=(weak_aug_train_sampler is None),
-        num_workers=num_workers, pin_memory=True, sampler=weak_aug_train_sampler, drop_last=True)
+        num_workers=args.num_workers, pin_memory=True, sampler=weak_aug_train_sampler, drop_last=True)
 
-    train_dataset = ImagenetContrastive(aug=simclr_aug, max_class=1000)
+    train_dataset = get_dataset(args, aug=cifar10_train_strong_aug)
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, shuffle=(train_sampler is None),
-        num_workers=num_workers, pin_memory=True, sampler=train_sampler, drop_last=True)
+        num_workers=args.num_workers, pin_memory=True, sampler=train_sampler, drop_last=True)
     
     iteration_per_epoch = train_loader.__len__()
-    criterion = nn.CrossEntropyLoss().cuda(local_rank)
+    criterion = nn.CrossEntropyLoss().to(rank)
 
-    checkpoint_path = 'checkpoints/wcl-{}.pth'.format(epochs)
+    checkpoint_path = 'checkpoints/wcl-{}.pth'.format(args.epochs)
+    os.makedirs(checkpoint_path.split('/')[0], exist_ok=True)
     print('checkpoint_path:', checkpoint_path)
+    
     if os.path.exists(checkpoint_path):
         checkpoint =  torch.load(checkpoint_path, map_location='cpu')
-        model.load_state_dict(checkpoint['model'])
+        model.load_state_dict(dict(('module.' + k, v) for k, v in checkpoint['model'].items()))
         optimizer.load_state_dict(checkpoint['optimizer'])
         start_epoch = checkpoint['epoch']
     else:
@@ -143,21 +153,24 @@ def main():
     
 
     model.train()
-    for epoch in range(start_epoch, epochs):
-        if epoch < warm_up:
+    for epoch in range(start_epoch, args.epochs):
+        if epoch < args.warmup_epochs:
             weak_aug_train_sampler.set_epoch(epoch)
-            train(weak_aug_train_loader, model, local_rank, rank, criterion, optimizer, epoch, iteration_per_epoch, base_lr)
+            train(args, weak_aug_train_loader, model, rank, criterion, optimizer, epoch, iteration_per_epoch, args.base_lr)
         else:
             train_sampler.set_epoch(epoch)
-            train(train_loader, model, local_rank, rank, criterion, optimizer, epoch, iteration_per_epoch, base_lr)
+            train(args, train_loader, model, rank, criterion, optimizer, epoch, iteration_per_epoch, args.base_lr)
         
         if rank == 0:
             torch.save(
             {
-                'model': model.state_dict(),
+                'model': model.module.state_dict(),
                 'optimizer': optimizer.state_dict(),
                 'epoch': epoch + 1
             }, checkpoint_path)
+    destroy_process_group()
 
 if __name__ == "__main__":
-    main()
+    args = parsing.parse_args()
+    world_size = args.ngpus
+    mp.spawn(main, args=(args,), nprocs=world_size)

@@ -1,5 +1,6 @@
 import torch
-from data.imagenet import *
+# from data.imagenet import *
+from data.cifar import *
 from data.augmentation import *
 from network.head import *
 from network.resnet import *
@@ -9,14 +10,22 @@ from util.meter import *
 import time
 from util.torch_dist_sum import *
 from util.dist_init import dist_init
+import torch.multiprocessing as mp
 import argparse
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--checkpoint', type=str, default='')
+    parser.add_argument('--gpu_ids', type=str, default='4,5')
+    args = parser.parse_args()
+    
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_ids)
+    args.ngpus = torch.cuda.device_count()
+    print(args)
+    
+    return args
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--checkpoint', type=str, default='')
-args = parser.parse_args()
-print(args)
 
 
 def accuracy(output, target, topk=(1,)):
@@ -36,18 +45,21 @@ def accuracy(output, target, topk=(1,)):
 
 
 
-def main():
-    rank, local_rank, world_size = dist_init()
+def main(rank, args):
+    
+    dist_init(rank, args)
+    world_size = args.ngpus
+    
     epochs = 80
-    batch_size = 4096 // world_size
+    batch_size = 1028 // world_size # 4096 // world_size
     num_workers = 8
-    lr = 0.2 * 4096 / 256
+    lr = 0.2 * batch_size / 256
 
     pre_train = resnet50()
     pre_train = nn.SyncBatchNorm.convert_sync_batchnorm(pre_train)
     state_dict = torch.load('checkpoints/' + args.checkpoint, map_location='cpu')['model']
 
-    prefix = 'module.net.'
+    prefix = 'net.'
     for k in list(state_dict.keys()):
         if not k.startswith(prefix):
             del state_dict[k]
@@ -58,17 +70,19 @@ def main():
     pre_train.load_state_dict(state_dict)
 
     model = LinearHead(pre_train)
-    model = DistributedDataParallel(model.to(local_rank), device_ids=[local_rank], output_device=local_rank, find_unused_parameters=True)
+    model = DistributedDataParallel(model.to(rank), device_ids=[rank], output_device=rank, find_unused_parameters=True)
     optimizer = torch.optim.SGD(model.module.fc.parameters(), lr=lr, momentum=0.9, weight_decay=0, nesterov=True)
     torch.backends.cudnn.benchmark = True
 
-    train_dataset = Imagenet(max_class=1000)
+    # train_dataset = Imagenet(max_class=1000)
+    train_dataset = CIFAR10Contrastive()
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, shuffle=(train_sampler is None),
         num_workers=num_workers, pin_memory=True, sampler=train_sampler)
 
-    test_dataset = Imagenet(mode='val', aug=eval_aug, max_class=1000)
+    # test_dataset = Imagenet(mode='val', aug=eval_aug, max_class=1000)
+    test_dataset = CIFAR10Contrastive()
     test_sampler = torch.utils.data.distributed.DistributedSampler(test_dataset)
     test_loader = torch.utils.data.DataLoader(
         test_dataset, batch_size=batch_size, shuffle=(test_sampler is None),
@@ -109,8 +123,8 @@ def main():
         for i, (image, label) in enumerate(train_loader):
             data_time.update(time.time() - end)
 
-            image = image.cuda(local_rank, non_blocking=True)
-            label = label.cuda(local_rank, non_blocking=True)
+            image = image.cuda(rank, non_blocking=True)
+            label = label.cuda(rank, non_blocking=True)
             
             out = model(image)
             loss = F.cross_entropy(out, label)
@@ -136,8 +150,8 @@ def main():
             end = time.time()
             for i, (image, label) in enumerate(test_loader):
                 
-                image = image.cuda(local_rank, non_blocking=True)
-                label = label.cuda(local_rank, non_blocking=True)
+                image = image.cuda(rank, non_blocking=True)
+                label = label.cuda(rank, non_blocking=True)
 
                 # compute output
                 output = model(image)
@@ -151,7 +165,7 @@ def main():
                 batch_time.update(time.time() - end)
                 end = time.time()
         
-        sum1, cnt1, sum5, cnt5 = torch_dist_sum(local_rank, top1.sum, top1.count, top5.sum, top5.count)
+        sum1, cnt1, sum5, cnt5 = torch_dist_sum(rank, top1.sum, top1.count, top5.sum, top5.count)
 
         top1_acc = sum(sum1.float()) / sum(cnt1.float())
         top5_acc = sum(sum5.float()) / sum(cnt5.float())
@@ -172,4 +186,6 @@ def main():
             )
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    world_size = args.ngpus
+    mp.spawn(main, args=(args,), nprocs=world_size)
