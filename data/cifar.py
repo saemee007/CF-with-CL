@@ -4,8 +4,7 @@ from PIL import Image
 
 import torchvision.transforms as transforms
 
-sys.path.append('/home/saemeechoi/cls_noise/')
-from knn_analysis.data.noisy_cifar import NoisyCIFAR10
+from data.noisy_cifar import NoisyCIFAR10
 
 
 
