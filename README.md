@@ -18,9 +18,9 @@ In this code, we adopt a hidden dimension of 4096 and output dimension 256 for t
 
 |          |Arch | BatchSize | Epochs | Linear Eval | Linear Eval (Paper) | Download  |
 |----------|:----:|:---:|:---:|:---:|:---:|:---:|
-|  WCL | ResNet50 | 256 | 100  | - % | - % | [wcl-100.pth](https://drive.google.com/file/d/1T_lvIBAavbA4k5o9UuzsmtYwAbWl0iwu/view?usp=sharing) |
-|  WCL | ResNet50 | 256 | 200  | -% | - % | [wcl-300.pth](https://drive.google.com/file/d/16XlA5rly01EaRHKF2hxyoDHfuBeKRkwn/view?usp=sharing) |
-|  WCL | ResNet50 | 256 | 200  | -% | - % | [wcl-400.pth](https://drive.google.com/file/d/16XlA5rly01EaRHKF2hxyoDHfuBeKRkwn/view?usp=sharing) |
+|  WCL | ResNet50 | 256 | 100  | - % | - % | [wcl-100.pth](https://drive.google.com/file/d/1WaLP5oAE9-_zre21wdV-C8ox0_YVVi8p/view?usp=share_link) |
+|  WCL | ResNet50 | 256 | 200  | -% | - % | [wcl-300.pth](https://drive.google.com/file/d/1VDG2EWtK4Wm-dTdclVfx5X6AWg3aI2Yn/view?usp=share_link) |
+|  WCL | ResNet50 | 256 | 200  | -% | - % | [wcl-400.pth](https://drive.google.com/file/d/1vSlT0_EoJqfg66euyvJHah6Y0sq5bHwh/view?usp=share_link) |
 
 If you want to test the pretained model, please download the weights from the link above, and move it to the checkpoints folder (create one if you don't have .checkpoints/ directory). The evaluation scripts also has been provided in script/train.sh
 
