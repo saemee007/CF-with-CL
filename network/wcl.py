@@ -52,27 +52,11 @@ class WCL(nn.Module):
 
         b = x.size(0)
         bakcbone_feat = self.net(x)
-        feat = F.normalize(self.head1(bakcbone_feat))
-
-        other = concat_other_gather(feat)
-
-        try:
-            prob = feat @ torch.cat([feat, other]).T / t
-        except:
-            prob = feat @ feat.T / t
-        diagnal_mask = (1 - torch.eye(prob.size(0), prob.size(1)).to(rank)).bool()
-        logits = torch.masked_select(prob, diagnal_mask).reshape(prob.size(0), -1)
-
-        first_half_label = torch.arange(b-1, 2*b-1).long().cuda()
-        second_half_label = torch.arange(0, b).long().cuda()
-        labels = torch.cat([first_half_label, second_half_label])
-
-        feat = F.normalize(self.head2(bakcbone_feat))
+        feat = F.normalize(self.head(bakcbone_feat))
         all_feat = concat_all_gather(feat)
         all_bs = all_feat.size(0)
 
-        mask1_list = []
-        mask2_list = []
+        mask_list = []
         if rank == 0:
             mask = self.build_connected_component(all_feat @ all_feat.T).float()
             mask_list = list(torch.chunk(mask, world_size))
@@ -84,6 +68,7 @@ class WCL(nn.Module):
         diagnal_mask = torch.eye(all_bs, all_bs, device='cuda')
         diagnal_mask = torch.chunk(diagnal_mask, world_size)[rank]
         graph_loss =  self.sup_contra(feat @ all_feat.T / t, mask, diagnal_mask)
+        
         return graph_loss
 
 
