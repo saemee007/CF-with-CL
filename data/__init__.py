@@ -19,5 +19,5 @@ def get_dataset(args, aug=None, return_label=False):
     if dataset_name not in SUPPORTED_DATASETS:
         raise NotImplementedError("Dataset {} does not exist.".format(dataset_name))
     if dataset_name == 'cf_cl':
-        return SUPPORTED_DATASETS[dataset_name](noise_type=noise_type, openset_ratio=openset_ratio, closeset_ratio=closeset_ratio, return_label=return_label)
+        return SUPPORTED_DATASETS[dataset_name](args.data_path)
     return SUPPORTED_DATASETS[dataset_name](aug=aug,noise_type=noise_type, openset_ratio=openset_ratio, closeset_ratio=closeset_ratio, return_label=return_label)
