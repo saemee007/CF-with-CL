@@ -110,7 +110,8 @@ def main(rank, args):
     iteration_per_epoch = train_loader.__len__()
     criterion = nn.CrossEntropyLoss().to(rank)
 
-    model = WCL(dim_input=train_dataset[0].size(0)).to(rank)
+    model = WCL(dim_input=len(train_dataset[0]))
+    model.to(rank)
     model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
     
     param_dict = {}
