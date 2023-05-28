@@ -17,7 +17,6 @@ def set_seed(seed=42):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu_ids', type=str, default='4,5')
-    parser.add_argument('--backbone', type=str, default='simplecnn')
 
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--lr_decay', type=str, default='step')
@@ -32,7 +31,12 @@ def parse_args():
     parser.add_argument('--temperature', type=float, default=0.1)
     
     # Dataset setting
+<<<<<<< HEAD
     parser.add_argument('--dataset', type=str, default='task1', help = 'cifar10 | cifar10_cl | cifar100 | cifar100_cl | imagenet | imagenet_cl | cf_cl')
+=======
+    parser.add_argument('--dataset', type=str, default='cf_cl', help = 'cifar10 | cifar10_cl | cifar100 | cifar100_cl | imagenet | imagenet_cl | cf_cl')
+    parser.add_argument('--data_path', type=str, default='./data/dataset')
+>>>>>>> 9bd71c0abc4cec64df8751c92747d548fbf46c73
     parser.add_argument('--noise_type', type=str, default='pairflip', help = 'symmetric | pairflip | instance | manual')
     parser.add_argument('--closeset_ratio', type=float, default=0.4)
     parser.add_argument('--openset_ratio', type=float, default=0.2)
