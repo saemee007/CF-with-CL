@@ -8,16 +8,16 @@ sys.path.append('/home/saemeechoi/cls_noise/with_WCL/')
 from network.head import *
 from network.resnet import *
 import torch.nn.functional as F
+import torch.nn as nn
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 import numpy as np
 
 class WCL(nn.Module):
-    def __init__(self, dim_hidden=4096, dim=256):
+    def __init__(self, dim_input, dim_hidden=4096, dim_output=256):
         super(WCL, self).__init__()
-        self.net = resnet50(pretrained=True)
-        self.head1 = ProjectionHead(dim_in=2048, dim_out=dim, dim_hidden=dim_hidden)
-        self.head2 = ProjectionHead(dim_in=2048, dim_out=dim, dim_hidden=dim_hidden)
+        self.net = nn.Linear(dim_input, 2048) # resnet50(pretrained=True)
+        self.head = ProjectionHead(dim_in=2048, dim_out=dim_output, dim_hidden=dim_hidden)
 
     @torch.no_grad()
     def build_connected_component(self, dist):
@@ -46,23 +46,20 @@ class WCL(nn.Module):
         loss = (-mean_log_prob_pos).mean()
         return loss
 
-    def forward(self, x1, x2, rank, t=0.1):
+    def forward(self, x, rank, t=0.1):
         world_size = torch.distributed.get_world_size()
         rank = torch.distributed.get_rank()
 
-        b = x1.size(0)
-        bakcbone_feat1 = self.net(x1)
-        bakcbone_feat2 = self.net(x2)
-        feat1 = F.normalize(self.head1(bakcbone_feat1))
-        feat2 = F.normalize(self.head1(bakcbone_feat2))
+        b = x.size(0)
+        bakcbone_feat = self.net(x)
+        feat = F.normalize(self.head1(bakcbone_feat))
 
-        other1 = concat_other_gather(feat1)
-        other2 = concat_other_gather(feat2)
+        other = concat_other_gather(feat)
 
         try:
-            prob = torch.cat([feat1, feat2]) @ torch.cat([feat1, feat2, other1, other2]).T / t
+            prob = feat @ torch.cat([feat, other]).T / t
         except:
-            prob = torch.cat([feat1, feat2]) @ torch.cat([feat1, feat2]).T / t
+            prob = feat @ feat.T / t
         diagnal_mask = (1 - torch.eye(prob.size(0), prob.size(1)).to(rank)).bool()
         logits = torch.masked_select(prob, diagnal_mask).reshape(prob.size(0), -1)
 
@@ -70,33 +67,24 @@ class WCL(nn.Module):
         second_half_label = torch.arange(0, b).long().cuda()
         labels = torch.cat([first_half_label, second_half_label])
 
-        feat1 = F.normalize(self.head2(bakcbone_feat1))
-        feat2 = F.normalize(self.head2(bakcbone_feat2))
-        all_feat1 = concat_all_gather(feat1)
-        all_feat2 = concat_all_gather(feat2)
-        all_bs = all_feat1.size(0)
+        feat = F.normalize(self.head2(bakcbone_feat))
+        all_feat = concat_all_gather(feat)
+        all_bs = all_feat.size(0)
 
         mask1_list = []
         mask2_list = []
         if rank == 0:
-            mask1 = self.build_connected_component(all_feat1 @ all_feat1.T).float()
-            mask2 = self.build_connected_component(all_feat2 @ all_feat2.T).float()
-            mask1_list = list(torch.chunk(mask1, world_size))
-            mask2_list = list(torch.chunk(mask2, world_size))
-            mask1 = mask1_list[0]
-            mask2 = mask2_list[0]
+            mask = self.build_connected_component(all_feat @ all_feat.T).float()
+            mask_list = list(torch.chunk(mask, world_size))
+            mask = mask_list[0]
         else:
-            mask1 = torch.zeros(b, all_bs, device='cuda')
-            mask2 = torch.zeros(b, all_bs, device='cuda')
-        torch.distributed.scatter(mask1, mask1_list, 0)
-        torch.distributed.scatter(mask2, mask2_list, 0)
+            mask = torch.zeros(b, all_bs, device='cuda')
+        torch.distributed.scatter(mask, mask_list, 0)
 
         diagnal_mask = torch.eye(all_bs, all_bs, device='cuda')
         diagnal_mask = torch.chunk(diagnal_mask, world_size)[rank]
-        graph_loss =  self.sup_contra(feat1 @ all_feat1.T / t, mask2, diagnal_mask)
-        graph_loss += self.sup_contra(feat2 @ all_feat2.T / t, mask1, diagnal_mask)
-        graph_loss /= 2
-        return logits, labels, graph_loss
+        graph_loss =  self.sup_contra(feat @ all_feat.T / t, mask, diagnal_mask)
+        return graph_loss
 
 
 

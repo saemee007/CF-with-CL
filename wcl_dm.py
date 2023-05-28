@@ -56,28 +56,19 @@ def train(args, train_loader, model, rank, criterion, optimizer, epoch, iteratio
 
     end = time.time()
     for i, data in enumerate(train_loader):
-        data = data
-        img1 = None
-        img2 = None
         adjust_learning_rate(args, optimizer, epoch, i, iteration_per_epoch)
         data_time.update(time.time() - end)
 
         if rank is not None:
-            img1 = img1.to(rank, non_blocking=True)
-            img2 = img2.to(rank, non_blocking=True)
+            data = data.to(rank, non_blocking=True)
 
         # compute output
-        output, target, graph_loss = model(img1, img2, rank)
-        ce_loss = criterion(output, target)
-        loss = ce_loss + graph_loss
+        graph_loss = model(data, rank)
+        loss = graph_loss
 
         # acc1/acc5 are (K+1)-way contrast classifier accuracy
         # measure accuracy and record loss
-        acc1, acc5 = accuracy(output, target, topk=(1, 5))
-        losses.update(ce_loss.item(), img1.size(0))
-        graph_losses.update(graph_loss.item(), img1.size(0))
-        top1.update(acc1[0], img1.size(0))
-        top5.update(acc5[0], img1.size(0))
+        graph_losses.update(graph_loss.item(), data.size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -106,11 +97,21 @@ def main(rank, args):
         args.base_lr = 0.075 * sqrt(args.batch_size * int(args.ngpus))
     elif 'cifar' in args.dataset:
         args.base_lr = 0.25 * args.batch_size / 256
+    elif 'cf' in args.dataset:
+        args.base_lr = 0.25 * args.batch_size / 256
     else:
         raise NotImplementedError("Dataset {} does not exist.".format(args.dataset))
 
+    train_dataset = get_dataset(args)
+    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=(train_sampler is None),
+        num_workers=args.num_workers, pin_memory=True, sampler=train_sampler, drop_last=True)
+    
+    iteration_per_epoch = train_loader.__len__()
+    criterion = nn.CrossEntropyLoss().to(rank)
 
-    model = WCL().to(rank)
+    model = WCL(dim_input=train_dataset[0].size(0)).to(rank)
     model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
     
     param_dict = {}
@@ -127,21 +128,6 @@ def main(rank, args):
     optimizer = LARS(optimizer, eps=0.0)
     model = DistributedDataParallel(model, device_ids=[rank], find_unused_parameters=True)
 
-    weak_aug_train_dataset = get_dataset(args, aug=cifar10_train_weak_aug)
-    weak_aug_train_sampler = torch.utils.data.distributed.DistributedSampler(weak_aug_train_dataset)
-    weak_aug_train_loader = torch.utils.data.DataLoader(
-        weak_aug_train_dataset, batch_size=batch_size, shuffle=(weak_aug_train_sampler is None),
-        num_workers=args.num_workers, pin_memory=True, sampler=weak_aug_train_sampler, drop_last=True)
-
-    train_dataset = get_dataset(args, aug=cifar10_train_strong_aug)
-    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=(train_sampler is None),
-        num_workers=args.num_workers, pin_memory=True, sampler=train_sampler, drop_last=True)
-    
-    iteration_per_epoch = train_loader.__len__()
-    criterion = nn.CrossEntropyLoss().to(rank)
-
     checkpoint_path = 'checkpoints/wcl-{}.pth'.format(args.epochs)
     os.makedirs(checkpoint_path.split('/')[0], exist_ok=True)
     print('checkpoint_path:', checkpoint_path)
@@ -157,12 +143,8 @@ def main(rank, args):
 
     model.train()
     for epoch in range(start_epoch, args.epochs):
-        if epoch < args.warmup_epochs:
-            weak_aug_train_sampler.set_epoch(epoch)
-            train(args, weak_aug_train_loader, model, rank, criterion, optimizer, epoch, iteration_per_epoch, args.base_lr)
-        else:
-            train_sampler.set_epoch(epoch)
-            train(args, train_loader, model, rank, criterion, optimizer, epoch, iteration_per_epoch, args.base_lr)
+        train_sampler.set_epoch(epoch)
+        train(args, train_loader, model, rank, criterion, optimizer, epoch, iteration_per_epoch, args.base_lr)
         
         if rank == 0:
             torch.save(
