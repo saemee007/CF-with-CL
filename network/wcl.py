@@ -51,6 +51,7 @@ class WCL(nn.Module):
         rank = torch.distributed.get_rank()
 
         b = x.size(0)
+        x = x.reshape(b, -1).float()
         bakcbone_feat = self.net(x)
         feat = F.normalize(self.head(bakcbone_feat))
         all_feat = concat_all_gather(feat)

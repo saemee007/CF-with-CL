@@ -48,7 +48,7 @@ def parse_args():
     print(args)
 
     os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_ids)
-    ngpus = len(str(args.gpu_ids).split(','))# torch.cuda.device_count()
+    ngpus = len(str(args.gpu_ids).split(',')) # torch.cuda.device_count()
     args.ngpus = ngpus
 
     return args  
