@@ -98,10 +98,8 @@ def main(rank, args):
         args.base_lr = 0.075 * sqrt(args.batch_size * int(args.ngpus))
     elif 'cifar' in args.dataset:
         args.base_lr = 0.25 * args.batch_size / 256
-    elif 'cf' in args.dataset:
-        args.base_lr = 0.25 * args.batch_size / 256
     else:
-        raise NotImplementedError("Dataset {} does not exist.".format(args.dataset))
+        args.base_lr = 0.25 * args.batch_size / 256
 
     train_dataset = get_dataset(args)
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
