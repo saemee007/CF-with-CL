@@ -32,7 +32,7 @@ def parse_args():
     parser.add_argument('--temperature', type=float, default=0.1)
     
     # Dataset setting
-    parser.add_argument('--dataset', type=str, default='cf_cl', help = 'cifar10 | cifar10_cl | cifar100 | cifar100_cl | imagenet | imagenet_cl | cf_cl')
+    parser.add_argument('--dataset', type=str, default='task1', help = 'cifar10 | cifar10_cl | cifar100 | cifar100_cl | imagenet | imagenet_cl | cf_cl')
     parser.add_argument('--noise_type', type=str, default='pairflip', help = 'symmetric | pairflip | instance | manual')
     parser.add_argument('--closeset_ratio', type=float, default=0.4)
     parser.add_argument('--openset_ratio', type=float, default=0.2)

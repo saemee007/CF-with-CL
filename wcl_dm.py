@@ -61,6 +61,7 @@ def train(args, train_loader, model, rank, criterion, optimizer, epoch, iteratio
 
         if rank is not None:
             data = data.to(rank, non_blocking=True)
+            data = torch.unsqueeze(data,1)
 
         # compute output
         graph_loss = model(data, rank)
