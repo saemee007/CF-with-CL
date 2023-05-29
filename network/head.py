@@ -32,11 +32,11 @@ class ProjectionHead(nn.Module):
         self.linear3 = nn.Linear(dim_hidden, dim_out)
         
     def forward(self, x):
-        x = self.linear1(x).unsqueeze(-1).unsqueeze(-1)
-        x = self.bn1(x).squeeze(-1).squeeze(-1)
+        x = self.linear1(x) # .unsqueeze(-1).unsqueeze(-1)
+        x = self.bn1(x)# .squeeze(-1).squeeze(-1)
         x = self.relu1(x)
-        x = self.linear2(x).unsqueeze(-1).unsqueeze(-1)
-        x = self.bn2(x).squeeze(-1).squeeze(-1)
+        x = self.linear2(x) # .unsqueeze(-1).unsqueeze(-1)
+        x = self.bn2(x) # .squeeze(-1).squeeze(-1)
         x = self.relu2(x)
         x = self.linear3(x)
         return x

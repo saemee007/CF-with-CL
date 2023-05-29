@@ -22,7 +22,7 @@ class Task1Loader(data.Dataset):
 
     def __getitem__(self, index):
         
-        return self.data[index]
+        return self.data[index], index
     
     def data_preprocess(self):
         
@@ -53,7 +53,7 @@ class Task2Loader(data.Dataset):
 
     def __getitem__(self, index):
 
-        return self.data[index]
+        return self.data[index], index
     
     def data_preprocess(self):
         

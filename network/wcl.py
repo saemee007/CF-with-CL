@@ -4,7 +4,7 @@ import sys
 import torch
 import torch.nn as nn
 
-sys.path.append('/home/saemeechoi/cls_noise/with_WCL/')
+sys.path.append('../../WCL')
 from network.head import *
 from network.resnet import *
 import torch.nn.functional as F
@@ -16,8 +16,9 @@ import numpy as np
 class WCL(nn.Module):
     def __init__(self, dim_input, dim_hidden=4096, dim_output=256):
         super(WCL, self).__init__()
-        self.net = nn.Linear(dim_input, 2048) # resnet50(pretrained=True)
-        self.head = ProjectionHead(dim_in=2048, dim_out=dim_output, dim_hidden=dim_hidden)
+        # self.net = nn.Linear(dim_input, 2048) # resnet50(pretrained=True)
+        self.net = ProjectionHead(dim_in=dim_input, dim_out=dim_hidden, dim_hidden=dim_hidden)
+        self.head = ProjectionHead(dim_in=dim_hidden, dim_out=dim_output, dim_hidden=dim_hidden)
 
     @torch.no_grad()
     def build_connected_component(self, dist):
