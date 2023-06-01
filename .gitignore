@@ -3,3 +3,4 @@ log/*
 。vscode/*
 checkpoints/*
 data/dataset/*
+notebooks/artifact/
