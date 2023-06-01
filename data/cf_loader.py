@@ -13,7 +13,6 @@ NUM_ITEMS = 42653
 class Task1Loader(data.Dataset):
     
     def __init__(self, data_path): 
-        # self.data_path = data_path
         self.data_path = '/home/nas3_userL/sohyunjeong/work_dir/etc/23spring/hw2/dataset/user_itemset_training.csv'
         self.data = self.data_preprocess()
 
@@ -42,37 +41,37 @@ class Task1Loader(data.Dataset):
 
 
 class Task2Loader(data.Dataset):
-    
-    def __init__(self, data_path): 
-        # self.data_path = data_path
+
+    def __init__(self, data_path):
         self.data_path = '/home/nas3_userL/sohyunjeong/work_dir/etc/23spring/hw2/dataset/itemset_item_training.csv'
-        self.data = self.data_preprocess() 
-        
+        self.data = self.data_preprocess()
+
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, index):
+        data = self.data[index][:-1]
+        itemset_id = self.data[index][-1]
+        
+        return data, itemset_id
 
-        return self.data[index], index
-    
     def data_preprocess(self):
-        
+
         df = pd.read_csv(self.data_path, names=['itemset_id', 'item_id'])
-        
+
         itemsets = list(set(df['itemset_id'].tolist()))
         data_dict = dict()
         for itemset in tqdm(itemsets):
             items = df[df['itemset_id']==itemset]['item_id'].tolist()
             data_dict.update({itemset:items})
-            
-        itemset_item = np.zeros((NUM_ITEMSETS, NUM_ITEMS))
-        for i in range(len(itemset_item)):
-            try:
-                itemset_item[i,data_dict[i]] = 1
-            except:
-                continue
-        
-        return itemset_item 
+
+        itemset_item = np.zeros((len(data_dict.keys()), NUM_ITEMS+1))
+        for i, (k, v) in enumerate(data_dict.items()) :
+            itemset_item[i,NUM_ITEMS] = k
+            itemset_item[i,v] = 1
+
+        return itemset_item
+
 
 
 if __name__=="__main__":
