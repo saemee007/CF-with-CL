@@ -2,3 +2,6 @@
 log/*
 。vscode/*
 checkpoints/*
+data/dataset/*
+notebooks/artifact/
+*evalutation_task*
