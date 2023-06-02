@@ -31,12 +31,8 @@ def parse_args():
     parser.add_argument('--temperature', type=float, default=0.1)
     
     # Dataset setting
-    parser.add_argument('--dataset', type=str, default='task1', help = 'cifar10 | cifar10_cl | cifar100 | cifar100_cl | imagenet | imagenet_cl | task1 | task2')
+    parser.add_argument('--dataset', type=str, default='task1', help = 'task1 | task2')
     parser.add_argument('--data_path', type=str, default='./data/dataset')
-    
-    parser.add_argument('--noise_type', type=str, default='pairflip', help = 'symmetric | pairflip | instance | manual')
-    parser.add_argument('--closeset_ratio', type=float, default=0.4)
-    parser.add_argument('--openset_ratio', type=float, default=0.2)
     
     # Logging
     parser.add_argument('--ablation', type=bool, default=False)

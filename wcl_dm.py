@@ -55,7 +55,10 @@ def train(args, train_loader, model, rank, criterion, optimizer, epoch, iteratio
     model.train()
 
     end = time.time()
-    for i, (data, user_id) in enumerate(train_loader):
+    assert args.dataset in ['task1', 'task2']
+    
+    for i, (data, id) in enumerate(train_loader):
+        data = torch.unsqueeze(data,1)
         adjust_learning_rate(args, optimizer, epoch, i, iteration_per_epoch)
         data_time.update(time.time() - end)
 
@@ -82,8 +85,7 @@ def train(args, train_loader, model, rank, criterion, optimizer, epoch, iteratio
 
         if i % 10 == 0 and rank == 0:
             progress.display(i)
-
-
+                
 def main(rank, args):
     from torch.nn.parallel import DistributedDataParallel
     from util.dist_init import dist_init
@@ -111,6 +113,7 @@ def main(rank, args):
     criterion = nn.CrossEntropyLoss().to(rank)
 
     model = WCL(dim_input=len(train_dataset[0][0]))
+        
     model.to(rank)
     model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
     
