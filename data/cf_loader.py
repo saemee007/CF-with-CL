@@ -13,7 +13,7 @@ NUM_ITEMS = 42653
 class Task1Loader(data.Dataset):
     
     def __init__(self, data_path): 
-        self.data_path = '/home/nas3_userL/sohyunjeong/work_dir/etc/23spring/hw2/dataset/user_itemset_training.csv'
+        self.data_path = '/dataset/user_itemset_training.csv'
         self.data = self.data_preprocess()
 
     def __len__(self):
