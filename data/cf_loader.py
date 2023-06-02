@@ -43,9 +43,9 @@ class Task1Loader(data.Dataset):
 
 class Task2Loader(data.Dataset):
     
-    def __init__(self, data_path): 
-        # self.data_path = data_path
-        self.data_path = '/home/nas3_userL/sohyunjeong/work_dir/etc/23spring/hw2/dataset/itemset_item_training.csv'
+    def __init__(self, data_path='/home/nas3_userL/sohyunjeong/work_dir/etc/23spring/hw2/dataset/itemset_item_training.csv'): 
+
+        self.data_path = data_path
         self.data = self.data_preprocess() 
         
     def __len__(self):
@@ -60,19 +60,18 @@ class Task2Loader(data.Dataset):
         df = pd.read_csv(self.data_path, names=['itemset_id', 'item_id'])
         
         itemsets = list(set(df['itemset_id'].tolist()))
+
         data_dict = dict()
         for itemset in tqdm(itemsets):
             items = df[df['itemset_id']==itemset]['item_id'].tolist()
             data_dict.update({itemset:items})
             
-        itemset_item = np.zeros((NUM_ITEMSETS, NUM_ITEMS))
-        for i in range(len(itemset_item)):
-            try:
-                itemset_item[i,data_dict[i]] = 1
-            except:
-                continue
+        itemset_item = np.zeros((len(data_dict.keys()), NUM_ITEMS+1))
+        for i, (k, v) in enumerate(data_dict.items()) :
+            itemset_item[i,NUM_ITEMS] = k
+            itemset_item[i,v] = 1
         
-        return itemset_item 
+        return itemset_item
 
 
 if __name__=="__main__":
