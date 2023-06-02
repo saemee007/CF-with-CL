@@ -1,4 +1,4 @@
-This repository contains PyTorch evaluation code, training code and pretrained models for WCL.
+This repository contains PyTorch evaluation code, training code and pretrained models for Collaborative Filtering with Contrastive Learning.
 
 For details see [Collaborative Filtering with Contrastive Learning](https://drive.google.com/file/d/13OCPVtxSA6A8jF4oOdLe79F-4jmC45UW/view?usp=share_link) by Hawon Jeong, Saemee Choi, Sohyun Jeong.
 
